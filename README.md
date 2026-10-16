@@ -73,3 +73,18 @@ This version covers cloud-aware photo selection, a durable print queue, collage/
 - [InstaxLink protocol research](https://github.com/paorin/InstaxLink) and [InstaxBLE research](https://github.com/javl/InstaxBLE)
 
 Implementation here is original; protocol research projects are credited for documenting wire formats and transport behavior.
+
+## Automatic GitHub releases
+
+Every branch push runs the checks, then builds a signed, non-debuggable release APK and publishes a GitHub release tagged `build-<workflow run number>`, with the APK and SHA-256 checksum attached. Default-branch releases become the latest release; other branches publish prereleases. Pull requests run checks without publishing. Re-running a workflow replaces the same build's assets rather than creating a duplicate release.
+
+Download the newest default-branch build directly: [WideLight.apk](https://github.com/vavilovm/widelight/releases/latest/download/WideLight.apk), or browse [GitHub Releases](https://github.com/vavilovm/widelight/releases/latest). Android version codes increase with the workflow run number. The default signing identity is the intentionally public, dedicated development key in `.github/keys/development.p12`, so no secret setup is needed. These are development distributions, not Play Store releases. The earlier debug APK uses a different certificate; switching from it requires uninstalling it first, which removes its private photo library.
+
+To use your own persistent signing identity, add these repository **Actions secrets**:
+
+- `ANDROID_KEYSTORE_BASE64`: base64-encoded keystore contents.
+- `ANDROID_KEYSTORE_PASSWORD`: keystore password.
+- `ANDROID_KEY_ALIAS`: signing-key alias.
+- `ANDROID_KEY_PASSWORD`: signing-key password.
+
+The workflow decodes the key into temporary runner storage, validates the accompanying settings, and removes the file after building. Keep the same key for future updates. Local `./gradlew assembleRelease` uses the development key unless `ANDROID_KEYSTORE_PATH` and the three signing environment variables are supplied.
