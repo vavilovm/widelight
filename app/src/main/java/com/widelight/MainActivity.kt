@@ -36,6 +36,8 @@ import java.io.File
 
 class Library(application: Application) : AndroidViewModel(application) {
     var photos by mutableStateOf(listOf<Photo>()); private set
+    var composition by mutableStateOf<Composition?>(null); private set
+    var compositionError by mutableStateOf<String?>(null); private set
     var message by mutableStateOf("Ready when you are"); private set
     var busy by mutableStateOf(false); private set
     var progress by mutableFloatStateOf(0f); private set
@@ -46,16 +48,39 @@ class Library(application: Application) : AndroidViewModel(application) {
             val a = JSONArray(index.takeIf { it.exists() }?.readText() ?: "[]")
             photos = (0 until a.length()).map { a.getJSONObject(it) }.map {
                 val id = it.getString("id")
-                Photo(id, File(context.filesDir, "$id.photo"), "Photo", it.optBoolean("favorite"), it.optInt("turns"), it.optBoolean("fill"))
+                Photo(id, File(context.filesDir, "$id.photo"), it.optString("title", "Photo"), it.optBoolean("favorite"), it.optInt("turns"), it.optBoolean("fill"))
             }.filter { it.file.exists() }
         }.onFailure { message = "Saved library could not be restored" }
     }
     private fun save() {
         val data = JSONArray()
-        photos.forEach { data.put(JSONObject().put("id", it.id).put("favorite", it.favorite).put("turns", it.turns).put("fill", it.fill)) }
+        photos.forEach { data.put(JSONObject().put("id", it.id).put("title", it.title).put("favorite", it.favorite).put("turns", it.turns).put("fill", it.fill)) }
         val temp = File(context.filesDir, "library.tmp")
         temp.writeText(data.toString())
         check(temp.renameTo(index)) { "Cannot save library" }
+    }
+    fun compose(photo: Photo? = null) {
+        if (!busy) { compositionError = null; composition = Composition(photo?.let { listOf(Slot(it, fill = it.fill)) }.orEmpty()) }
+    }
+    fun updateComposition(design: Composition) { if (!busy) { compositionError = null; composition = design } }
+    fun closeComposition() { if (!busy) composition = null }
+    fun saveComposition() {
+        val design = composition ?: return
+        if (busy) return
+        busy = true; compositionError = null; message = "Rendering designed print…"
+        viewModelScope.launch {
+            try {
+                val photo = withContext(Dispatchers.IO) { CompositionRenderer.save(design, context.filesDir) }
+                try {
+                    val previous = photos
+                    photos = photos + photo
+                    try { save() } catch (e: Exception) { photos = previous; throw e }
+                    composition = null
+                    message = "Designed print added to queue"
+                } catch (e: Exception) { photo.file.delete(); throw e }
+            } catch (e: Exception) { compositionError = e.message ?: "Could not save print"; message = compositionError!! }
+            finally { busy = false }
+        }
     }
     fun edit(photo: Photo) { if (!busy) { photos = photos.map { if (it.id == photo.id) photo else it }; save() } }
     fun remove(photo: Photo) { if (!busy) { photos = photos.filter { it.id != photo.id }; save(); photo.file.delete() } }
@@ -70,6 +95,9 @@ class Library(application: Application) : AndroidViewModel(application) {
                     val photo = withContext(Dispatchers.IO) { Photos.import(context, uri) }
                     photos = photos + photo
                     save()
+                    composition?.let { draft ->
+                        if (draft.slots.size < 6) composition = draft.copy(slots = draft.slots + Slot(photo))
+                    }
                     imported++
                 } catch (_: Exception) { failed++ }
             }
@@ -125,6 +153,10 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun App(library: Library) {
+    if (library.composition != null) {
+        ComposerScreen(library)
+        return
+    }
     val context = androidx.compose.ui.platform.LocalContext.current
     var favorites by remember { mutableStateOf(false) }
     var help by remember { mutableStateOf(false) }
@@ -160,6 +192,7 @@ fun App(library: Library) {
                 OutlinedButton(enabled = !library.busy, onClick = {
                     if (Build.VERSION.SDK_INT >= 31 && ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) permission.launch(Manifest.permission.BLUETOOTH_CONNECT) else showPrinters()
                 }) { Text(if (address == null) "Choose printer" else "Printer selected · Change") }
+                Button(enabled = !library.busy, onClick = { library.compose() }) { Text("Create collage / designed print") }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(selected = !favorites, onClick = { favorites = false }, label = { Text("Print queue · ${library.photos.size}") })
                     FilterChip(selected = favorites, onClick = { favorites = true }, label = { Text("Saved favorites") })
@@ -175,6 +208,8 @@ fun App(library: Library) {
             items(library.photos.filter { !favorites || it.favorite }, key = { it.id }) { photo ->
                 Card {
                     Column(Modifier.padding(12.dp)) {
+                        Text(photo.title, style = MaterialTheme.typography.titleMedium)
+                        TextButton(enabled = !library.busy, onClick = { library.compose(photo) }) { Text("Design · frame, caption & QR") }
                         var bitmap by remember(photo.id, photo.turns, photo.fill) { mutableStateOf<android.graphics.Bitmap?>(null) }
                         var failed by remember(photo.id) { mutableStateOf(false) }
                         LaunchedEffect(photo.id, photo.turns, photo.fill) {

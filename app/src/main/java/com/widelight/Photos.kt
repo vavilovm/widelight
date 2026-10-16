@@ -35,7 +35,8 @@ object Photos {
         } catch (e: Exception) { file.delete(); throw e }
     }
     fun decode(photo: Photo): Bitmap {
-        val source = ImageDecoder.createSource(photo.file)
+        require(photo.file.length() in 1..MAX_IMPORT.toLong()) { "Photo is empty or exceeds 30 MB" }
+        val source = ImageDecoder.createSource(java.nio.ByteBuffer.wrap(photo.file.readBytes()))
         val bitmap = ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
             decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
             val scale = minOf(1.0, 2000.0 / maxOf(info.size.width, info.size.height))

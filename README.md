@@ -9,6 +9,11 @@ A focused Android photo-to-print app for the **original micro-USB Fujifilm Insta
 - Google Photos → select inside an album or Favorites → Share → WideLight also works.
 - Private, durable imported copies; no broad storage permission or Google login required.
 - A persistent print queue with previews, rotate, fit/center-fill, remove, and app-local favorite bookmarks.
+- A 1–6 photo composer with grid, columns, rows, and spotlight layouts.
+- Per-photo rotate, fit/fill, zoom, and horizontal/vertical crop positioning; reorder photos within a layout.
+- White, ink, cream, and teal frames, adjustable borders/gutters, and captions.
+- Natural, Pop, B&W, and Warm color looks (independent of Fujifilm's color profiles).
+- QR codes for links or short messages, rendered on a separate white panel with a quiet zone.
 - One explicit confirmation per sheet. No automatic print retries.
 
 ### Enable cloud albums and Favorites
@@ -18,6 +23,16 @@ Tap **Add photos**, then open the system picker's menu/settings and select Googl
 If an album is unavailable, select its images in Google Photos and share them to WideLight. WideLight's saved favorites are independent of Google Photos favorites.
 
 The Android photo picker is different from Google's web Photos Picker API. The latter currently does not show album/Favorites categories directly. This app intentionally uses the Android integration.
+
+## Create a collage or designed print
+
+1. Add your photos to the queue, then tap **Create collage / designed print**. For a single photo, tap its **Design · frame, caption & QR** action.
+2. Choose 1–6 photos from the queue or import more using the system picker. Selection order determines placement; use Earlier/Later to reorder.
+3. Choose a layout and select each photo's numbered chip to rotate, fit, zoom, or adjust its crop position.
+4. Choose a frame/color look, adjust border and spacing, and optionally add a caption or QR link/message.
+5. **Save print to queue** creates a separate, flattened, lossless 1260×840 PNG. Original photos stay unchanged. Print the saved design as one sheet.
+
+The live draft survives activity rotation but is not restored after process death. Saved prints persist across restarts and stay usable after their source photos are removed. Saved designs are flattened rather than editable layout recipes; keep source photos to make another version. Captions support up to 80 characters. QR payloads support up to 160 UTF-8 bytes. QR codes embed the supplied text/link directly: WideLight does not host audio or other files. Try scanning a physical test print before making more copies.
 
 ## Printing
 
@@ -33,20 +48,21 @@ Android Studio, JDK 17, Android SDK 35:
 ./gradlew testDebugUnitTest assembleDebug lintDebug
 ```
 
-The debug APK is at `app/build/outputs/apk/debug/app-debug.apk`. GitHub Actions runs these checks and uploads it. No signing credentials, Google Cloud project, server, or API keys are needed.
+The debug APK is at `app/build/outputs/apk/debug/app-debug.apk`. GitHub Actions runs these checks and uploads it. No signing credentials, Google Cloud project, server, or API keys are needed. Unit tests cover packet handling, every layout, crop/fit rendering, source-independent saved designs, persistence, and decoding the QR from the final compressed JPEG. Native graphics tests run with Robolectric on Android 14.
 
 ## Current scope
 
-This first version covers photo selection, an individual-photo queue, simple composition, and a direct print path. Manual pan/zoom crop, copies/batch scheduling, rich/natural color profiles, collage, frames, QR codes, and background printing are not implemented. Photos are stored only in private app storage, excluded from backup, and deleted when removed or when the app is uninstalled. Import is limited to 50 images at a time and 30 MB per image; decoding is bounded to 2000 pixels on the longest edge.
+This version covers cloud-aware photo selection, a durable print queue, collage/design composition, and a direct print path. Copies/batch scheduling, Fujifilm rich/natural profiles, editable saved layout recipes, and background printing are not implemented. Photos are stored only in private app storage, excluded from backup, and deleted when removed or when the app is uninstalled. Import is limited to 50 images at a time and 30 MB per image; decoding is bounded to 2000 pixels on the longest edge.
 
 ## Verification on a device
 
 1. Enable Google Photos cloud media and check cloud-only photos, Albums, and Favorites in Add photos.
 2. Share multiple photos from a Google Photos album and verify previews survive app restart.
 3. Compare portrait/landscape fit, fill, and rotate previews; remove an image and confirm it disappears after restart.
-4. Pair a powered original Link WIDE, grant Nearby devices, then print one expendable test photo.
-5. Confirm orientation, color, film margins, status, and transfer behavior before further use.
-6. Check no-film/door-open errors, disconnect during transfer, and never blindly retry a lost print acknowledgement.
+4. Create a six-photo collage; reorder, rotate, crop, change frames, add a caption and QR; save and restart. Remove the sources and check that the saved design is intact.
+5. Pair a powered original Link WIDE, grant Nearby devices, then print one expendable test photo.
+6. Confirm orientation, color, film margins, status, and transfer behavior before further use.
+7. Check no-film/door-open errors, disconnect during transfer, and never blindly retry a lost print acknowledgement.
 
 ## References
 
