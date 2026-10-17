@@ -157,4 +157,10 @@
     <string name="crop_hint">Tap a photo • pinch to zoom • drag to reframe</string>
     <string name="fill_all">Fill all photos</string>
     <string name="update_app">Download and install latest version</string>
+    <string name="print_colors">Print colors · tuning</string>
+    <string name="print_color_help">Saved for all prints and designs. Skin tint adds pink; skin depth reduces paleness. Greens stay unchanged. Uses skin-like colors, not face detection: similar reds/oranges may also change. Preview is not a film simulation. Start at 6 / 6, then try tint 10 or depth 10 on the same photo. Compare fully developed prints in the same light.</string>
+    <string name="skin_tint">Skin tint (− green / + pink)</string>
+    <string name="skin_depth">Skin depth (%)</string>
+    <string name="color_defaults">Reset · recommended defaults</string>
+    <string name="color_unadjusted">Unadjusted · previous output</string>
 </resources>

@@ -60,12 +60,12 @@ fun ComposerScreen(library: Library) {
         }
     }
     LaunchedEffect(Unit) {
-      snapshotFlow { currentDraft }.conflate().collect { draft ->
+      snapshotFlow { currentDraft to library.printColor }.conflate().collect { (draft, color) ->
         rendering = true
         try {
             if (draft.slots.isEmpty()) { preview = null; previewError = null }
             else {
-                val bitmap = withContext(Dispatchers.IO) { CompositionRenderer.render(draft, 630, 420, highlightBlank = true) }
+                val bitmap = withContext(Dispatchers.IO) { CompositionRenderer.render(draft, 630, 420, highlightBlank = true).also { color.apply(it) } }
                 uncovered = withContext(Dispatchers.IO) { CompositionRenderer.hasBlankSpace(draft) }
                 preview = bitmap
                 previewError = null
@@ -232,6 +232,7 @@ fun ComposerScreen(library: Library) {
                     }
                     if (draft.frame != Frame.NONE) LabeledSlider(stringResource(R.string.border), draft.border, 0f..0.08f, !library.busy) { update(draft.copy(border = it)) }
                     if (draft.slots.size > 1) LabeledSlider(stringResource(R.string.photo_spacing), draft.gap, 0f..0.04f, !library.busy) { update(draft.copy(gap = it)) }
+                    PrintColorControls(library)
                     Text(stringResource(R.string.color_look), style = MaterialTheme.typography.titleMedium)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(Look.entries) { look -> FilterChip(selected = draft.look == look, enabled = !library.busy, onClick = { update(draft.copy(look = look)) }, label = { Text(stringResource(look.label)) }) }

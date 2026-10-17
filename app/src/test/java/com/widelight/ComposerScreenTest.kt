@@ -38,6 +38,20 @@ class ComposerScreenTest {
         compose.onNodeWithText(app.getString(R.string.qr_link_or_message_optional)).assertExists()
         assertEquals(before,compose.onNodeWithTag("pinned-preview").fetchSemanticsNode().boundsInRoot)
     }
+    @Test fun skinControlsShowNumbersAndRestoreThePreviousOutput() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val library = Library(app)
+        library.updatePrintColor(PrintColor())
+        compose.setContent { MaterialTheme { androidx.compose.foundation.layout.Column { PrintColorControls(library) } } }
+        compose.onNodeWithText(app.getString(R.string.print_colors)).performClick()
+        compose.onNodeWithText(app.getString(R.string.skin_tint)+": 6").assertExists()
+        compose.onNodeWithText(app.getString(R.string.skin_depth)+": 6").assertExists()
+        compose.onNodeWithText(app.getString(R.string.color_unadjusted)).performClick()
+        compose.runOnIdle { assertEquals(PrintColor.NEUTRAL,library.printColor) }
+        compose.onNodeWithText(app.getString(R.string.skin_tint)+": 0").assertExists()
+        compose.onNodeWithText(app.getString(R.string.color_defaults)).performClick()
+        compose.runOnIdle { assertEquals(PrintColor(),library.printColor) }
+    }
     @Test @Config(qualifiers = "ru") fun russianResourcesAndLandscapeControlsAreAvailable() {
         val app = ApplicationProvider.getApplicationContext<Application>()
         assertEquals("Добавить фото",app.getString(R.string.add_photos))

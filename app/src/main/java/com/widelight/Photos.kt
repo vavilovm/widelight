@@ -54,7 +54,7 @@ object Photos {
         return try { kotlin.math.abs(bitmap.width.toFloat() / bitmap.height - ratio) > .01f }
         finally { bitmap.recycle() }
     }
-    fun render(photo: Photo, width: Int, height: Int): Bitmap {
+    fun render(photo: Photo, width: Int, height: Int, color: PrintColor = PrintColor.NEUTRAL): Bitmap {
         val source = decode(photo)
         val result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(result)
@@ -64,10 +64,11 @@ object Photos {
         val h = source.height * scale
         canvas.drawBitmap(source, null, RectF((width-w)/2, (height-h)/2, (width+w)/2, (height+h)/2), Paint(Paint.FILTER_BITMAP_FLAG))
         source.recycle()
+        color.apply(result)
         return result
     }
-    fun jpeg(photo: Photo, caps: Printer.Capabilities): ByteArray {
-        val bitmap = render(photo, caps.width, caps.height)
+    fun jpeg(photo: Photo, caps: Printer.Capabilities, color: PrintColor = PrintColor.NEUTRAL): ByteArray {
+        val bitmap = render(photo, caps.width, caps.height, color)
         try {
             for (quality in 95 downTo 35 step 5) {
                 val bytes = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.JPEG, quality, it) }.toByteArray()

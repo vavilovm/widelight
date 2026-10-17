@@ -117,3 +117,24 @@ the system installer. Allow installation from WideLight when Android asks.
 Updates retain the library. Releases currently use the stable public development
 signing key because private signing secrets are not configured. Keep the same
 key for compatible upgrades; changing keys requires reinstalling the app.
+
+### Skin-tone print tuning
+
+**Print colors · tuning** in the queue (also under the composer’s More options)
+provides saved, numeric **Skin tint** (−30…+30, positive adds pink) and **Skin depth**
+(0…30%, darkens warm tones). Defaults are **6 / 6**, a conservative starting point
+for pale faces. No global tint, brightness, or saturation adjustment is applied;
+green, cyan, blue and neutral pixels are unchanged. A smooth warm-color mask is
+used, not face recognition: similarly colored red/orange objects can also change,
+and nearly white/clipped skin has little recoverable color. The correction is
+applied once to queue previews and the outgoing JPEG, including saved designs;
+saved photos/designs remain uncorrected, so tuning never accumulates.
+
+Use **Unadjusted · previous output** for a baseline and **Reset · recommended
+defaults** to restore 6 / 6. For a useful physical comparison, print the same
+portrait with green surroundings at 0 / 0, 6 / 6, then either 10 / 6 (pinker) or
+6 / 10 (deeper), changing only one control. Compare fully developed prints under
+the same light. The preview shows the transmitted image, not calibrated film
+output. Fujifilm’s Natural/Rich rendering is not reproduced by our Natural look;
+the exact proprietary processing and the cause of any particular mismatch have
+not been measured against physical reference prints.

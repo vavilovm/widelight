@@ -43,6 +43,15 @@ class Library(application: Application) : AndroidViewModel(application) {
     var busy by mutableStateOf(false); private set
     var progress by mutableFloatStateOf(0f); private set
     private val context get() = getApplication<Application>()
+    private val colorPrefs = application.getSharedPreferences("print-color", 0)
+    var printColor by mutableStateOf(PrintColor(
+        colorPrefs.getInt("tint", 6).coerceIn(-30,30), colorPrefs.getInt("depth", 6).coerceIn(0,30)))
+        private set
+    fun updatePrintColor(value: PrintColor) {
+        if (busy) return
+        printColor = value
+        colorPrefs.edit().putInt("tint",value.skinTint).putInt("depth",value.skinDepth).apply()
+    }
     private val index get() = File(context.filesDir, "library.json")
     init {
         runCatching {
@@ -123,6 +132,7 @@ class Library(application: Application) : AndroidViewModel(application) {
     }
     fun print(address: String, photo: Photo) {
         if (busy) return
+        val color = printColor
         busy = true; progress = 0f; message = context.getString(R.string.connecting_to_printer)
         viewModelScope.launch {
             try {
@@ -134,7 +144,7 @@ class Library(application: Application) : AndroidViewModel(application) {
                         val caps = printer.capabilities()
                         val status = printer.status()
                         withContext(Dispatchers.Main) { filmRemaining = status; filmAddress = address; message = context.getString(R.string.preparing, context.resources.getQuantityString(R.plurals.film_remaining, status, status)) }
-                        val jpeg = Photos.jpeg(photo, caps)
+                        val jpeg = Photos.jpeg(photo, caps, color)
                         withContext(Dispatchers.Main) { message = context.getString(R.string.sending_photo) }
                         printer.print(jpeg) { value -> viewModelScope.launch { progress = value } }
                     }
@@ -217,6 +227,7 @@ fun App(library: Library) {
                     TextButton(enabled = !library.busy, onClick = { library.refreshFilm(selected) }) { Text(stringResource(R.string.refresh_film)) }
                 }
                 Button(enabled = !library.busy, onClick = { library.compose() }) { Text(stringResource(R.string.create_collage_designed_print)) }
+                PrintColorControls(library)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(selected = !favorites, onClick = { favorites = false }, label = { Text(stringResource(R.string.queue_count, library.photos.size)) })
                     FilterChip(selected = favorites, onClick = { favorites = true }, label = { Text(stringResource(R.string.saved_favorites)) })
@@ -234,13 +245,14 @@ fun App(library: Library) {
                     Column(Modifier.padding(12.dp)) {
                         Text(photo.localizedTitle(), style = MaterialTheme.typography.titleMedium)
                         TextButton(enabled = !library.busy, onClick = { library.compose(photo) }) { Text(stringResource(R.string.design_frame_caption_qr)) }
-                        var bitmap by remember(photo.id, photo.turns, photo.fill) { mutableStateOf<android.graphics.Bitmap?>(null) }
+                        var bitmap by remember(photo.id, photo.turns, photo.fill, library.printColor) { mutableStateOf<android.graphics.Bitmap?>(null) }
                         var previewBlank by remember(photo.id, photo.turns, photo.fill) { mutableStateOf(photo.uncovered || !photo.fill) }
                         var failed by remember(photo.id) { mutableStateOf(false) }
-                        LaunchedEffect(photo.id, photo.turns, photo.fill) {
+                        LaunchedEffect(photo.id, photo.turns, photo.fill, library.printColor) {
+                            val color = library.printColor
                             runCatching { withContext(Dispatchers.IO) {
                                 val blank = Photos.hasBlankSpace(photo)
-                                val result = Photos.render(photo, 630, 420)
+                                val result = Photos.render(photo, 630, 420, color)
                                 withContext(Dispatchers.Main) { previewBlank = blank }
                                 result
                             } }.onSuccess { bitmap = it }.onFailure { failed = true }
