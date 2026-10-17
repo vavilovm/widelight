@@ -7,6 +7,19 @@ import com.google.zxing.*
 import com.google.zxing.common.HybridBinarizer
 
 class CompositionTest {
+    @Test fun gesturesTrackFingerMovementAndKeepTheZoomAnchor() {
+        val slot = Slot(Photo("test", File("test.photo"), "Test"), zoom = 2f)
+        val moved = transformCrop(slot,600,400,600f,400f,300f,200f,60f,0f,1f)
+        assertEquals(.4f,moved.x,.001f)
+        assertEquals(.5f,moved.y,.001f)
+        val zoomed = transformCrop(slot,600,400,600f,400f,0f,0f,0f,0f,1.5f)
+        assertEquals(.375f,zoomed.x,.001f)
+        assertEquals(3f,zoomed.zoom,.001f)
+        val clamped = transformCrop(slot,600,400,600f,400f,0f,0f,10000f,-10000f,10f)
+        assertEquals(0f,clamped.x,.001f)
+        assertEquals(1f,clamped.y,.001f)
+    }
+
     @Test fun everyLayoutTilesTheCanvasWithoutOverlap() {
         for (count in 1..6) for (layout in Layout.entries) {
             val cells = CollageLayout.cells(count, layout)

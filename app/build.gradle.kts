@@ -2,7 +2,7 @@ plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id(
 android {
  namespace = "com.widelight"
  compileSdk = 35
- defaultConfig { applicationId = "com.widelight"; minSdk = 28; targetSdk = 35; versionCode = providers.gradleProperty("buildNumber").orNull?.toInt()?.let { 1000 + it } ?: 3; versionName = "0.3.0" + (providers.gradleProperty("buildNumber").orNull?.let { "+$it" } ?: "") }
+ defaultConfig { applicationId = "com.widelight"; minSdk = 28; targetSdk = 35; versionCode = providers.gradleProperty("buildNumber").orNull?.toInt()?.let { 1000 + it } ?: 4; versionName = "0.4.0" + (providers.gradleProperty("buildNumber").orNull?.let { "+$it" } ?: "") }
  defaultConfig { resourceConfigurations += listOf("en", "ru") }
  signingConfigs {
   create("release") {

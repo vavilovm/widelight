@@ -149,4 +149,12 @@
         <item quantity="one">%1$d sheet remaining</item>
         <item quantity="other">%1$d sheets remaining</item>
     </plurals>
+    <string name="blank_warning">White areas will remain inside the photo. Choose Fill to crop the edges, or confirm to print with white areas.</string>
+    <string name="confirm_blank_print">Print with white areas</string>
+    <string name="film_count">%1$d sheets remaining · last checked</string>
+    <string name="film_unknown">Film remaining: not checked</string>
+    <string name="refresh_film">Check printer / refresh film</string>
+    <string name="crop_hint">Tap a photo • pinch to zoom • drag to reframe</string>
+    <string name="fill_all">Fill all photos</string>
+    <string name="update_app">Download and install latest version</string>
 </resources>

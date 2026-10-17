@@ -49,13 +49,13 @@ class Library(application: Application) : AndroidViewModel(application) {
             val a = JSONArray(index.takeIf { it.exists() }?.readText() ?: "[]")
             photos = (0 until a.length()).map { a.getJSONObject(it) }.map {
                 val id = it.getString("id")
-                Photo(id, File(context.filesDir, "$id.photo"), it.optString("title", "Photo"), it.optBoolean("favorite"), it.optInt("turns"), it.optBoolean("fill"))
+                Photo(id, File(context.filesDir, "$id.photo"), it.optString("title", "Photo"), it.optBoolean("favorite"), it.optInt("turns"), it.optBoolean("fill"), it.optBoolean("uncovered"))
             }.filter { it.file.exists() }
         }.onFailure { message = context.getString(R.string.saved_library_could_not_be_restored) }
     }
     private fun save() {
         val data = JSONArray()
-        photos.forEach { data.put(JSONObject().put("id", it.id).put("title", it.title).put("favorite", it.favorite).put("turns", it.turns).put("fill", it.fill)) }
+        photos.forEach { data.put(JSONObject().put("id", it.id).put("title", it.title).put("favorite", it.favorite).put("turns", it.turns).put("fill", it.fill).put("uncovered", it.uncovered)) }
         val temp = File(context.filesDir, "library.tmp")
         temp.writeText(data.toString())
         check(temp.renameTo(index)) { context.getString(R.string.cannot_save_library) }
@@ -106,6 +106,21 @@ class Library(application: Application) : AndroidViewModel(application) {
             busy = false
         }
     }
+    var filmRemaining by mutableStateOf<Int?>(null); private set
+    var filmAddress by mutableStateOf<String?>(null); private set
+    fun refreshFilm(address: String) {
+        if (busy) return
+        busy = true; filmRemaining = null; filmAddress = address
+        viewModelScope.launch {
+            try {
+                filmRemaining = withContext(Dispatchers.IO) {
+                    val adapter = context.getSystemService(BluetoothManager::class.java).adapter
+                    Printer(adapter.getRemoteDevice(address)).use { it.connect(); it.capabilities(); it.status(requireFilm = false) }
+                }
+            } catch (e: Exception) { message = context.failureText(e, R.string.connection_failed) }
+            finally { busy = false }
+        }
+    }
     fun print(address: String, photo: Photo) {
         if (busy) return
         busy = true; progress = 0f; message = context.getString(R.string.connecting_to_printer)
@@ -118,14 +133,16 @@ class Library(application: Application) : AndroidViewModel(application) {
                         printer.connect()
                         val caps = printer.capabilities()
                         val status = printer.status()
-                        withContext(Dispatchers.Main) { message = context.getString(R.string.preparing, context.resources.getQuantityString(R.plurals.film_remaining, status, status)) }
+                        withContext(Dispatchers.Main) { filmRemaining = status; filmAddress = address; message = context.getString(R.string.preparing, context.resources.getQuantityString(R.plurals.film_remaining, status, status)) }
                         val jpeg = Photos.jpeg(photo, caps)
                         withContext(Dispatchers.Main) { message = context.getString(R.string.sending_photo) }
                         printer.print(jpeg) { value -> viewModelScope.launch { progress = value } }
                     }
                 }
+                filmRemaining = filmRemaining?.let { (it - 1).coerceAtLeast(0) }
                 message = context.getString(R.string.print_accepted_wait_for_the_film_to)
             } catch (e: Exception) {
+                filmRemaining = null
                 message = context.getString(R.string.transfer_error, context.failureText(e, R.string.connection_failed))
             } finally { busy = false }
         }
@@ -162,6 +179,7 @@ fun App(library: Library) {
     var favorites by remember { mutableStateOf(false) }
     var help by remember { mutableStateOf(false) }
     var printers by remember { mutableStateOf(false) }
+    var printBlank by remember { mutableStateOf(false) }
     var printPhoto by remember { mutableStateOf<Photo?>(null) }
     var address by remember { mutableStateOf(context.getSharedPreferences("printer", 0).getString("address", null)) }
     var devices by remember { mutableStateOf(listOf<Pair<String, String>>()) }
@@ -176,7 +194,7 @@ fun App(library: Library) {
     }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> if (granted) showPrinters() else permissionError = true }
     Scaffold(containerColor = MaterialTheme.colorScheme.background, topBar = {
-        TopAppBar(title = { Text("WideLight") }, actions = { TextButton(onClick = { help = true }) { Text(stringResource(R.string.photo_help)) } })
+        TopAppBar(title = { Text("WideLight") }, actions = { UpdateButton(); TextButton(onClick = { help = true }) { Text(stringResource(R.string.photo_help)) } })
     }, bottomBar = {
         Surface(tonalElevation = 3.dp) {
             Column(Modifier.fillMaxWidth().padding(16.dp)) {
@@ -193,6 +211,11 @@ fun App(library: Library) {
                 OutlinedButton(enabled = !library.busy, onClick = {
                     if (Build.VERSION.SDK_INT >= 31 && ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) permission.launch(Manifest.permission.BLUETOOTH_CONNECT) else showPrinters()
                 }) { Text(if (address == null) stringResource(R.string.choose_printer) else stringResource(R.string.printer_selected_change)) }
+                address?.let { selected ->
+                    Text(if (library.filmAddress == selected && library.filmRemaining != null)
+                        stringResource(R.string.film_count, library.filmRemaining!!) else stringResource(R.string.film_unknown))
+                    TextButton(enabled = !library.busy, onClick = { library.refreshFilm(selected) }) { Text(stringResource(R.string.refresh_film)) }
+                }
                 Button(enabled = !library.busy, onClick = { library.compose() }) { Text(stringResource(R.string.create_collage_designed_print)) }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(selected = !favorites, onClick = { favorites = false }, label = { Text(stringResource(R.string.queue_count, library.photos.size)) })
@@ -212,12 +235,19 @@ fun App(library: Library) {
                         Text(photo.localizedTitle(), style = MaterialTheme.typography.titleMedium)
                         TextButton(enabled = !library.busy, onClick = { library.compose(photo) }) { Text(stringResource(R.string.design_frame_caption_qr)) }
                         var bitmap by remember(photo.id, photo.turns, photo.fill) { mutableStateOf<android.graphics.Bitmap?>(null) }
+                        var previewBlank by remember(photo.id, photo.turns, photo.fill) { mutableStateOf(photo.uncovered || !photo.fill) }
                         var failed by remember(photo.id) { mutableStateOf(false) }
                         LaunchedEffect(photo.id, photo.turns, photo.fill) {
-                            runCatching { withContext(Dispatchers.IO) { Photos.render(photo, 630, 420) } }.onSuccess { bitmap = it }.onFailure { failed = true }
+                            runCatching { withContext(Dispatchers.IO) {
+                                val blank = Photos.hasBlankSpace(photo)
+                                val result = Photos.render(photo, 630, 420)
+                                withContext(Dispatchers.Main) { previewBlank = blank }
+                                result
+                            } }.onSuccess { bitmap = it }.onFailure { failed = true }
                         }
                         bitmap?.let { Image(it.asImageBitmap(), stringResource(R.string.print_preview), Modifier.fillMaxWidth().aspectRatio(1.5f).background(Color.White)) }
                         if (failed) Text(stringResource(R.string.preview_unavailable_remove_this_photo_and_add))
+                        if (previewBlank) Text(stringResource(R.string.blank_warning), color = MaterialTheme.colorScheme.error)
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             FilterChip(selected = !photo.fill, enabled = !library.busy, onClick = { library.edit(photo.edited(fill = !photo.fill)) }, label = { Text(if (photo.fill) stringResource(R.string.fill_crops_edges) else stringResource(R.string.fit_whole_photo)) })
                             TextButton(enabled = !library.busy, onClick = { library.edit(photo.edited(turns = (photo.turns + 1) % 4)) }) { Text(stringResource(R.string.rotate)) }
@@ -225,7 +255,7 @@ fun App(library: Library) {
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             TextButton(enabled = !library.busy, onClick = { library.edit(photo.edited(favorite = !photo.favorite)) }) { Text(if (photo.favorite) stringResource(R.string.saved) else stringResource(R.string.save)) }
                             TextButton(enabled = !library.busy, onClick = { library.remove(photo) }) { Text(stringResource(R.string.remove)) }
-                            Button(enabled = !library.busy && address != null && bitmap != null, onClick = { printPhoto = photo }) { Text(stringResource(R.string.print)) }
+                            Button(enabled = !library.busy && address != null && bitmap != null, onClick = { printBlank = previewBlank; printPhoto = photo }) { Text(stringResource(R.string.print)) }
                         }
                     }
                 }
@@ -237,10 +267,10 @@ fun App(library: Library) {
     if (printers) AlertDialog(onDismissRequest = { printers = false }, title = { Text(stringResource(R.string.choose_your_link_wide)) }, text = { Column {
         Text(stringResource(R.string.pair_the_original_link_wide_in_android))
         devices.forEach { (name, mac) -> Text(name, Modifier.fillMaxWidth().clickable {
-            address = mac; context.getSharedPreferences("printer", 0).edit().putString("address", mac).apply(); printers = false
+            address = mac; context.getSharedPreferences("printer", 0).edit().putString("address", mac).apply(); printers = false; library.refreshFilm(mac)
         }.padding(vertical = 16.dp)) }
         if (devices.isEmpty()) Text(stringResource(R.string.no_paired_instax_android_endpoint_found), Modifier.padding(top = 16.dp))
     } }, confirmButton = { TextButton(onClick = { context.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)); printers = false }) { Text(stringResource(R.string.bluetooth_settings)) } }, dismissButton = { TextButton(onClick = { printers = false }) { Text(stringResource(R.string.close)) } })
     if (permissionError) AlertDialog(onDismissRequest = { permissionError = false }, title = { Text(stringResource(R.string.nearby_devices_access_needed)) }, text = { Text(stringResource(R.string.allow_nearby_devices_in_android_app_settings)) }, confirmButton = { TextButton(onClick = { permissionError = false }) { Text(stringResource(R.string.ok)) } })
-    printPhoto?.let { photo -> AlertDialog(onDismissRequest = { printPhoto = null }, title = { Text(stringResource(R.string.print_one_photo)) }, text = { Text(stringResource(R.string.this_uses_one_sheet_of_wide_film)) }, confirmButton = { TextButton(onClick = { printPhoto = null; address?.let { library.print(it, photo) } }) { Text(stringResource(R.string.print_1_sheet)) } }, dismissButton = { TextButton(onClick = { printPhoto = null }) { Text(stringResource(R.string.cancel)) } }) }
+    printPhoto?.let { photo -> AlertDialog(onDismissRequest = { printPhoto = null }, title = { Text(stringResource(R.string.print_one_photo)) }, text = { Column { Text(stringResource(R.string.this_uses_one_sheet_of_wide_film)); if (printBlank) Text(stringResource(R.string.blank_warning), color = MaterialTheme.colorScheme.error) } }, confirmButton = { TextButton(onClick = { printPhoto = null; address?.let { library.print(it, photo) } }) { Text(stringResource(if (printBlank) R.string.confirm_blank_print else R.string.print_1_sheet)) } }, dismissButton = { TextButton(onClick = { printPhoto = null }) { Text(stringResource(R.string.cancel)) } }) }
 }

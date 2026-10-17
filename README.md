@@ -96,3 +96,24 @@ To use your own persistent signing identity, add these repository **Actions secr
 CI pins Ubuntu 24.04 and Node 24 actions, reuses the Gradle build cache, and transfers the already-built APK to the publishing job without rebuilding it. Artifact uploads skip redundant ZIP compression.
 
 The workflow decodes the key into temporary runner storage, validates the accompanying settings, and removes the file after building. Keep the same key for future updates. Local `./gradlew assembleRelease` uses the development key unless `ANDROID_KEYSTORE_PATH` and the three signing environment variables are supplied.
+
+
+### Crop, film, and updates
+
+New photos fill the print by default. In the collage preview, tap a cell to select it,
+pinch to zoom and drag to reframe. The gold outline and thirds grid identify the
+active photo. Striped regions represent white areas in the printed photo; they
+are preview guides and are never printed. Fit preserves the whole image and
+requires explicit confirmation before printing; this warning survives saving a
+collage to the queue. Intentional borders, captions and QR panels are excluded.
+
+Choose a printer and use **Check printer / refresh film** to read its remaining
+film. The count is the last reading (decreased after an accepted print), not a
+live connection; refresh after changing film or using another app.
+
+**Update app** downloads the APK from the latest stable GitHub release, verifies
+its package, signing certificate and increasing Android version code, then opens
+the system installer. Allow installation from WideLight when Android asks.
+Updates retain the library. Releases currently use the stable public development
+signing key because private signing secrets are not configured. Keep the same
+key for compatible upgrades; changing keys requires reinstalling the app.

@@ -5,6 +5,13 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -22,6 +29,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.conflate
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -33,24 +41,39 @@ fun ComposerScreen(library: Library) {
     var extras by rememberSaveable { mutableStateOf(false) }
     var discard by rememberSaveable { mutableStateOf(false) }
     var preview by remember { mutableStateOf<Bitmap?>(null) }
+    var dimensions by remember { mutableStateOf<Map<String, Pair<Int,Int>>>(emptyMap()) }
+    var uncovered by remember { mutableStateOf(false) }
+    var confirmBlank by remember { mutableStateOf(false) }
+    val currentDraft by rememberUpdatedState(draft)
+    val currentActive by rememberUpdatedState(active)
     var previewError by remember { mutableStateOf<String?>(null) }
     var rendering by remember { mutableStateOf(false) }
     val valid = runCatching { draft.validate() }.exceptionOrNull()?.let { context.failureText(it, R.string.could_not_render_preview) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(6)) { library.import(it) }
     BackHandler { if (!library.busy) discard = true }
-    LaunchedEffect(draft) {
+    LaunchedEffect(draft.slots.map { it.photo.id to it.turns }) {
+        dimensions = withContext(Dispatchers.IO) {
+            draft.slots.mapNotNull { slot -> runCatching {
+                val image = Photos.decode(slot.photo.edited(turns = slot.turns))
+                try { "${slot.photo.id}:${slot.turns}" to (image.width to image.height) } finally { image.recycle() }
+            }.getOrNull() }.toMap()
+        }
+    }
+    LaunchedEffect(Unit) {
+      snapshotFlow { currentDraft }.conflate().collect { draft ->
         rendering = true
         try {
-            delay(120)
             if (draft.slots.isEmpty()) { preview = null; previewError = null }
             else {
-                val bitmap = withContext(Dispatchers.IO) { CompositionRenderer.render(draft, 630, 420) }
+                val bitmap = withContext(Dispatchers.IO) { CompositionRenderer.render(draft, 630, 420, highlightBlank = true) }
+                uncovered = withContext(Dispatchers.IO) { CompositionRenderer.hasBlankSpace(draft) }
                 preview = bitmap
                 previewError = null
             }
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) { preview = null; previewError = context.failureText(e, R.string.could_not_render_preview) }
-        finally { rendering = false }
+        finally { rendering = currentDraft != draft }
+      }
     }
     fun update(next: Composition) { library.updateComposition(next) }
     fun editSlot(change: (Slot) -> Slot) {
@@ -65,7 +88,7 @@ fun ComposerScreen(library: Library) {
             library.compositionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (valid != null && draft.slots.isNotEmpty()) Text(valid, color = MaterialTheme.colorScheme.error)
             Button(modifier = Modifier.fillMaxWidth(), enabled = !library.busy && valid == null && !rendering && preview != null,
-                onClick = { library.saveComposition() }) { Text(stringResource(R.string.save_print_to_queue)) }
+                onClick = { if (uncovered) confirmBlank = true else library.saveComposition() }) { Text(stringResource(R.string.save_print_to_queue)) }
             Text(stringResource(R.string.creates_a_new_print_your_originals_stay), style = MaterialTheme.typography.bodySmall)
         } }
     }) { padding ->
@@ -73,8 +96,59 @@ fun ComposerScreen(library: Library) {
             val previewHeight = minOf(maxWidth / 1.5f, maxHeight * .38f)
             Column(Modifier.fillMaxSize()) {
                 if (draft.slots.isNotEmpty()) {
-                    Box(Modifier.fillMaxWidth().height(previewHeight).background(Color(0xFFE8E6E0)).testTag("pinned-preview"), contentAlignment = Alignment.Center) {
+                    Box(Modifier.fillMaxWidth().height(previewHeight).background(Color(0xFF3D4544)).testTag("pinned-preview"), contentAlignment = Alignment.Center) {
                         preview?.let { Image(it.asImageBitmap(), stringResource(R.string.collage_print_preview), Modifier.fillMaxSize()) }
+                        Canvas(Modifier.fillMaxSize()
+                            .pointerInput(library.busy) {
+                                detectTapGestures { point ->
+                                    if (!library.busy) {
+                                        val w = minOf(size.width.toFloat(), size.height*1.5f)
+                                        val h = w/1.5f
+                                        val px = point.x-(size.width-w)/2
+                                        val py = point.y-(size.height-h)/2
+                                        CompositionRenderer.targets(currentDraft,w,h).indexOfFirst { it.contains(px,py) }
+                                            .takeIf { it >= 0 }?.let { active = it }
+                                    }
+                                }
+                            }
+                            .pointerInput(library.busy) {
+                                detectTransformGestures { focus, pan, zoom, _ ->
+                                    val design = currentDraft
+                                    val index = currentActive.coerceIn(0, design.slots.lastIndex)
+                                    if (!library.busy) {
+                                        val w = minOf(size.width.toFloat(),size.height*1.5f)
+                                        val rect = CompositionRenderer.targets(design,w,w/1.5f)[index]
+                                        val slot = design.slots[index]
+                                        dimensions["${slot.photo.id}:${slot.turns}"]?.let { (sw,sh) ->
+                                            update(design.copy(slots = design.slots.mapIndexed { i, value ->
+                                                if (i != index) value else transformCrop(slot,sw,sh,rect.width(),rect.height(),
+                                                    focus.x-(size.width-w)/2-rect.left,
+                                                    focus.y-(size.height-w/1.5f)/2-rect.top,pan.x,pan.y,zoom)
+                                            }))
+                                        }
+                                    }
+                                }
+                            }) {
+                            val w = minOf(size.width,size.height*1.5f)
+                            val h = w/1.5f
+                            CompositionRenderer.targets(draft,w,h).forEachIndexed { i, rect ->
+                                val left = rect.left+(size.width-w)/2
+                                val top = rect.top+(size.height-h)/2
+                                if (i == active.coerceIn(0,draft.slots.lastIndex)) {
+                                    drawRect(Color(0xFFFFB300),Offset(left,top),Size(rect.width(),rect.height()),style=Stroke(3.dp.toPx()))
+                                    for (line in 1..2) {
+                                        drawLine(Color.White.copy(alpha=.6f),Offset(left+rect.width()*line/3,top),Offset(left+rect.width()*line/3,top+rect.height()))
+                                        drawLine(Color.White.copy(alpha=.6f),Offset(left,top+rect.height()*line/3),Offset(left+rect.width(),top+rect.height()*line/3))
+                                    }
+                                }
+                            }
+                        }
+
+                    }
+                    Text(stringResource(R.string.crop_hint), Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall)
+                    if (uncovered) {
+                        Text(stringResource(R.string.blank_warning), Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.error)
+                        TextButton(enabled = !library.busy, onClick = { update(draft.copy(slots = draft.slots.map { it.copy(fill = true) })) }) { Text(stringResource(R.string.fill_all)) }
                     }
                     if (rendering) LinearProgressIndicator(Modifier.fillMaxWidth())
                     previewError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -108,11 +182,18 @@ fun ComposerScreen(library: Library) {
                 item {
                     Text(stringResource(R.string.layout), style = MaterialTheme.typography.titleMedium)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(Layout.entries) { layout -> FilterChip(selected = draft.layout == layout, enabled = !library.busy, onClick = { update(draft.copy(layout = layout)) }, label = { Text(stringResource(layout.label)) }) }
+                        items(Layout.entries) { layout -> FilterChip(selected = draft.layout == layout, enabled = !library.busy, onClick = { update(draft.copy(layout = layout)) }, label = { Text(stringResource(layout.label)) }, leadingIcon = {
+                            Canvas(Modifier.size(30.dp,20.dp)) {
+                                CollageLayout.cells(draft.slots.size,layout).forEach { cell ->
+                                    drawRect(Color(0xFF236C61),Offset(cell.left*size.width+1,cell.top*size.height+1),
+                                        Size((cell.right-cell.left)*size.width-2,(cell.bottom-cell.top)*size.height-2))
+                                }
+                            }
+                        }) }
                     }
                     Text(stringResource(R.string.edit_a_photo), style = MaterialTheme.typography.titleMedium)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(draft.slots.size) { index -> FilterChip(selected = active.coerceAtMost(draft.slots.lastIndex) == index, enabled = !library.busy, onClick = { active = index }, label = { Text(stringResource(R.string.photo_number, index+1)) }) }
+                        items(draft.slots.size) { index -> FilterChip(selected = active.coerceAtMost(draft.slots.lastIndex) == index, enabled = !library.busy, onClick = { active = index }, label = { Text(stringResource(R.string.photo_number, index+1)) }, leadingIcon = { PhotoThumbnail(draft.slots[index].photo,Modifier.size(42.dp,28.dp)) }) }
                     }
                     val index = active.coerceIn(0, draft.slots.lastIndex)
                     val slot = draft.slots[index]
@@ -135,7 +216,7 @@ fun ComposerScreen(library: Library) {
                         LabeledSlider(stringResource(R.string.zoom), slot.zoom, 1f..3f, !library.busy) { value -> editSlot { it.copy(zoom = value) } }
                         LabeledSlider(stringResource(R.string.horizontal_position), slot.x, 0f..1f, !library.busy) { value -> editSlot { it.copy(x = value) } }
                         LabeledSlider(stringResource(R.string.vertical_position), slot.y, 0f..1f, !library.busy) { value -> editSlot { it.copy(y = value) } }
-                        TextButton(enabled = !library.busy, onClick = { editSlot { it.copy(zoom = 1f, x = .5f, y = .5f) } }) { Text(stringResource(R.string.reset_crop)) }
+                        TextButton(enabled = !library.busy, onClick = { editSlot { it.copy(fill = true, zoom = 1.03f, x = .5f, y = .5f) } }) { Text(stringResource(R.string.reset_crop)) }
                     }
                 }
                 item {
@@ -171,6 +252,9 @@ fun ComposerScreen(library: Library) {
             }
         }
     }
+    if (confirmBlank) AlertDialog(onDismissRequest = { confirmBlank = false }, title = { Text(stringResource(R.string.blank_warning)) },
+        confirmButton = { TextButton(onClick = { confirmBlank = false; library.saveComposition() }) { Text(stringResource(R.string.save_print_to_queue)) } },
+        dismissButton = { TextButton(onClick = { confirmBlank = false }) { Text(stringResource(R.string.keep_editing)) } })
     if (discard) AlertDialog(onDismissRequest = { discard = false }, title = { Text(stringResource(R.string.leave_this_design)) }, text = { Text(stringResource(R.string.unsaved_layout_changes_will_be_discarded_original)) }, confirmButton = { TextButton(onClick = { library.closeComposition() }) { Text(stringResource(R.string.discard_design)) } }, dismissButton = { TextButton(onClick = { discard = false }) { Text(stringResource(R.string.keep_editing)) } })
 }
 

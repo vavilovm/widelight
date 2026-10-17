@@ -14,7 +14,7 @@ enum class Frame(val label: Int, val color: Int) {
 }
 enum class Look(val label: Int) { NATURAL(R.string.natural), POP(R.string.pop), MONO(R.string.b_w), WARM(R.string.warm) }
 data class Slot(val photo: Photo, val turns: Int = photo.turns, val fill: Boolean = true,
-                val zoom: Float = 1f, val x: Float = .5f, val y: Float = .5f)
+                val zoom: Float = 1.03f, val x: Float = .5f, val y: Float = .5f)
 data class Composition(
     val slots: List<Slot>, val layout: Layout = Layout.AUTO, val frame: Frame = Frame.WHITE,
     val border: Float = .025f, val gap: Float = .012f, val caption: String = "",
@@ -52,4 +52,23 @@ object CollageLayout {
 object QrCode {
     fun matrix(text: String) = QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, 1, 1,
         mapOf(EncodeHintType.CHARACTER_SET to "UTF-8", EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.M, EncodeHintType.MARGIN to 4))
+}
+
+/** Keep the point under the fingers stationary while zooming, then apply the drag. */
+fun transformCrop(slot: Slot, sourceWidth: Int, sourceHeight: Int, width: Float, height: Float,
+                  focusX: Float, focusY: Float, panX: Float, panY: Float, zoomChange: Float): Slot {
+    val base = maxOf(width/sourceWidth, height/sourceHeight)
+    val oldZoom = if (slot.fill) slot.zoom else 1f
+    val zoom = (oldZoom*zoomChange).coerceIn(1f,3f)
+    fun position(size: Float, sourceSize: Int, position: Float, focus: Float, pan: Float): Float {
+        val oldSize = sourceSize*base*oldZoom
+        val newSize = sourceSize*base*zoom
+        if (newSize-size < .01f) return .5f
+        val oldStart = (size-oldSize)*position
+        val newStart = focus-(focus-oldStart)*(newSize/oldSize)+pan
+        return (newStart/(size-newSize)).coerceIn(0f,1f)
+    }
+    return slot.copy(fill = true, zoom = zoom,
+        x = position(width,sourceWidth,slot.x,focusX,panX),
+        y = position(height,sourceHeight,slot.y,focusY,panY))
 }

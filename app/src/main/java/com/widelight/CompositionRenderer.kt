@@ -5,7 +5,24 @@ import java.io.File
 import java.util.UUID
 
 object CompositionRenderer {
-    fun render(design: Composition, width: Int, height: Int): Bitmap {
+    fun targets(design: Composition, width: Float, height: Float): List<RectF> {
+        if (design.slots.isEmpty()) return emptyList()
+        val unit = minOf(width, height)
+        val margin = if (design.frame == Frame.NONE) 0f else unit * design.border
+        val area = RectF(margin, margin, width-margin-(if (design.qr.isNotBlank()) width*.25f else 0f),
+            height-margin-(if (design.caption.isNotBlank()) height*.12f else 0f))
+        val gap = if (design.slots.size == 1) 0f else unit * design.gap / 2
+        return CollageLayout.cells(design.slots.size, design.layout).map { cell ->
+            RectF(area.left+cell.left*area.width()+gap, area.top+cell.top*area.height()+gap,
+                area.left+cell.right*area.width()-gap, area.top+cell.bottom*area.height()-gap)
+        }
+    }
+    fun hasBlankSpace(design: Composition): Boolean =
+        design.slots.zip(targets(design, 1260f, 840f)).any { (slot, rect) ->
+            !slot.fill && Photos.hasBlankSpace(slot.photo.edited(turns = slot.turns, fill = false), rect.width()/rect.height())
+        }
+
+    fun render(design: Composition, width: Int, height: Int, highlightBlank: Boolean = false): Bitmap {
         design.validate()
         require(width > 0 && height > 0)
         val result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
@@ -17,11 +34,7 @@ object CompositionRenderer {
             val qrWidth = if (design.qr.isNotBlank()) width * .25f else 0f
             val captionHeight = if (design.caption.isNotBlank()) height * .12f else 0f
             val area = RectF(margin, margin, width-margin-qrWidth, height-margin-captionHeight)
-            val cells = CollageLayout.cells(design.slots.size, design.layout)
-            design.slots.zip(cells).forEach { (slot, cell) ->
-                val gap = if (design.slots.size == 1) 0f else unit * design.gap / 2
-                val target = RectF(area.left + cell.left * area.width() + gap, area.top + cell.top * area.height() + gap,
-                    area.left + cell.right * area.width() - gap, area.top + cell.bottom * area.height() - gap)
+            design.slots.zip(targets(design, width.toFloat(), height.toFloat())).forEach { (slot, target) ->
                 val source = Photos.decode(slot.photo.edited(turns = slot.turns))
                 try {
                     val scale = if (slot.fill) maxOf(target.width()/source.width, target.height()/source.height)*slot.zoom else minOf(target.width()/source.width, target.height()/source.height)
@@ -33,6 +46,14 @@ object CompositionRenderer {
                     canvas.clipRect(target)
                     // Fit preserves the complete photo on a neutral background in every frame color.
                     canvas.drawColor(Color.WHITE)
+                    if (highlightBlank && !slot.fill) {
+                        val warning = Paint().apply { color = 0xFFFFDB99.toInt(); strokeWidth = 2f }
+                        var stripe = target.left-target.height()
+                        while (stripe < target.right) {
+                            canvas.drawLine(stripe, target.bottom, stripe+target.height(), target.top, warning)
+                            stripe += 12f
+                        }
+                    }
                     canvas.drawBitmap(source, null, RectF(x, y, x+w, y+h), Paint(Paint.FILTER_BITMAP_FLAG).apply { colorFilter = colorFilter(design.look) })
                     canvas.restore()
                 } finally { source.recycle() }
@@ -76,7 +97,7 @@ object CompositionRenderer {
         val bitmap = render(design, 1260, 840)
         try {
             file.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
-            return Photo(id, file, if (design.slots.size > 1) "Collage · ${design.slots.size} photos" else "Designed print")
+            return Photo(id, file, if (design.slots.size > 1) "Collage · ${design.slots.size} photos" else "Designed print", uncovered = hasBlankSpace(design))
         } catch (e: Exception) { file.delete(); throw e } finally { bitmap.recycle() }
     }
 }

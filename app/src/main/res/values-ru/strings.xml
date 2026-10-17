@@ -157,4 +157,12 @@
         <item quantity="many">Осталось снимков: %1$d</item>
         <item quantity="other">Осталось снимков: %1$d</item>
     </plurals>
+    <string name="blank_warning">Внутри фотографии останутся белые поля. Выберите заполнение или подтвердите печать с полями.</string>
+    <string name="confirm_blank_print">Печатать с белыми полями</string>
+    <string name="film_count">Осталось листов: %1$d · последняя проверка</string>
+    <string name="film_unknown">Остаток плёнки не проверен</string>
+    <string name="refresh_film">Проверить принтер и плёнку</string>
+    <string name="crop_hint">Нажмите фото • масштаб двумя пальцами • перетащите кадр</string>
+    <string name="fill_all">Заполнить все фото</string>
+    <string name="update_app">Скачать и установить обновление</string>
 </resources>

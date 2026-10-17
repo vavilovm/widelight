@@ -39,6 +39,22 @@ class CompositionRendererTest {
         assertEquals(Color.BLUE, swapped.getPixel(150,200))
         rendered.recycle(); swapped.recycle()
     }
+    @Test fun blankSpaceWarningsSurviveFlatteningAndPreviewMarksOnlyBlankAreas() {
+        val source = photo(Color.RED)
+        assertTrue(source.fill)
+        val fit = Composition(listOf(Slot(source, fill = false)), frame = Frame.NONE)
+        assertTrue(CompositionRenderer.hasBlankSpace(fit))
+        assertFalse(CompositionRenderer.hasBlankSpace(fit.copy(slots = listOf(Slot(source)))))
+        val saved = CompositionRenderer.save(fit, app.filesDir)
+        assertTrue(saved.uncovered)
+        assertTrue(Photos.hasBlankSpace(saved))
+        val plain = CompositionRenderer.render(fit, 600, 400)
+        val highlighted = CompositionRenderer.render(fit, 600, 400, highlightBlank = true)
+        assertEquals(Color.WHITE, plain.getPixel(300, 10))
+        assertEquals(Color.RED, highlighted.getPixel(300, 200))
+        assertTrue((0 until 600).any { highlighted.getPixel(it, 10) != Color.WHITE })
+        plain.recycle(); highlighted.recycle()
+    }
     @Test fun cropPositionAndFitAreRespected() {
         val source = photo(Color.RED, Color.BLUE)
         val design = Composition(listOf(Slot(source, zoom = 3f, x = 0f)), frame = Frame.NONE)

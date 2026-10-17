@@ -6,8 +6,8 @@ import android.net.Uri
 import java.io.ByteArrayOutputStream
 import java.io.File
 
-class Photo(val id: String, val file: File, val title: String, val favorite: Boolean = false, val turns: Int = 0, val fill: Boolean = false) {
-    fun edited(favorite: Boolean = this.favorite, turns: Int = this.turns, fill: Boolean = this.fill) = Photo(id, file, title, favorite, turns, fill)
+class Photo(val id: String, val file: File, val title: String, val favorite: Boolean = false, val turns: Int = 0, val fill: Boolean = true, val uncovered: Boolean = false) {
+    fun edited(favorite: Boolean = this.favorite, turns: Int = this.turns, fill: Boolean = this.fill) = Photo(id, file, title, favorite, turns, fill, uncovered)
 }
 object Photos {
     const val MAX_IMPORT = 30 * 1024 * 1024
@@ -46,6 +46,13 @@ object Photos {
         val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, Matrix().apply { postRotate(photo.turns * 90f) }, true)
         if (rotated !== bitmap) bitmap.recycle()
         return rotated
+    }
+    fun hasBlankSpace(photo: Photo, ratio: Float = 1.5f): Boolean {
+        if (photo.uncovered) return true
+        if (photo.fill) return false
+        val bitmap = decode(photo)
+        return try { kotlin.math.abs(bitmap.width.toFloat() / bitmap.height - ratio) > .01f }
+        finally { bitmap.recycle() }
     }
     fun render(photo: Photo, width: Int, height: Int): Bitmap {
         val source = decode(photo)

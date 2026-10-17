@@ -39,14 +39,14 @@ class Printer(device: BluetoothDevice) : Closeable {
         ensureState(w == 1260 && h in 800..840 && formats and 2 != 0 && max in 10000..10000000, R.string.this_printer_is_not_a_supported_original)
         return Capabilities(w, h, max)
     }
-    fun status(): Int {
+    fun status(requireFilm: Boolean = true): Int {
         val d = command(2, byteArrayOf(2))
         ensureState(d.size >= 9 && d[0] == 2.toByte(), R.string.invalid_printer_status)
         val film = d[1].toInt() and 15
         val flags = d[2].toInt() and 255
         ensureState(flags and 1 == 0, R.string.close_the_film_door_text)
         ensureState(flags and 6 == 0, R.string.printer_is_busy_or_has_an_error)
-        ensureState(film > 0, R.string.load_film_before_printing)
+        ensureState(!requireFilm || film > 0, R.string.load_film_before_printing)
         return film
     }
     fun print(jpeg: ByteArray, progress: (Float) -> Unit) {
