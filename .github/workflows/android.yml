@@ -8,42 +8,17 @@ permissions:
   contents: read
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6.1.0
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
-        with:
-          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
-          log-accepted-android-sdk-licenses: false
-      - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew testDebugUnitTest assembleDebug lintDebug
-      - uses: actions/upload-artifact@v4
-        with:
-          name: WideLight-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
-
-  release:
-    name: Publish release APK
-    if: github.event_name == 'push'
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - uses: android-actions/setup-android@v3
-        with:
-          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
-          log-accepted-android-sdk-licenses: false
-      - uses: gradle/actions/setup-gradle@v4
+      - name: Install required Android packages
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' > /dev/null
+      - uses: gradle/actions/setup-gradle@v6.4.0
       - name: Prepare optional private signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -61,18 +36,41 @@ jobs:
             chmod 600 "$RUNNER_TEMP/widelight-signing.p12"
             echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/widelight-signing.p12" >> "$GITHUB_ENV"
           fi
-      - name: Build signed release APK
+      - name: Test, lint, and build release once
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease -PbuildNumber="$GITHUB_RUN_NUMBER"
+        run: ./gradlew --build-cache testDebugUnitTest lintDebug assembleRelease -PbuildNumber="$GITHUB_RUN_NUMBER"
       - name: Verify APK signature
         run: '"$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/release/app-release.apk'
       - name: Prepare release asset
         run: |
           cp app/build/outputs/apk/release/app-release.apk "WideLight.apk"
           sha256sum "WideLight.apk" > "WideLight.apk.sha256"
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: release-apk
+          path: |
+            WideLight.apk
+            WideLight.apk.sha256
+          compression-level: 0
+          if-no-files-found: error
+      - name: Remove temporary signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/widelight-signing.p12"
+  release:
+    name: Publish release APK
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: release-apk
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -98,6 +96,3 @@ jobs:
               --title "WideLight · build ${GITHUB_RUN_NUMBER}" \
               --notes-file "$RUNNER_TEMP/release-notes.md" "${flags[@]}"
           fi
-      - name: Remove temporary signing key
-        if: always()
-        run: rm -f "$RUNNER_TEMP/widelight-signing.p12"

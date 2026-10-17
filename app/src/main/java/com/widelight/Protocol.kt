@@ -19,26 +19,26 @@ object Protocol {
             var offset = 0
             while (offset < n) {
                 val count = input.read(bytes, offset, n - offset)
-                check(count > 0) { "Printer disconnected" }
+                ensureState(count > 0, R.string.printer_disconnected)
                 offset += count
             }
             return bytes
         }
         val header = read(4)
-        check(header[0] == 0x61.toByte() && header[1] == 0x42.toByte()) { "Invalid printer reply" }
+        ensureState(header[0] == 0x61.toByte() && header[1] == 0x42.toByte(), R.string.invalid_printer_reply)
         val size = ByteBuffer.wrap(header, 2, 2).short.toInt() and 65535
-        check(size in 8..65535) { "Invalid reply length" }
+        ensureState(size in 8..65535, R.string.invalid_reply_length)
         val packet = header + read(size - 4)
-        check(packet.sumOf { it.toInt() and 255 } and 255 == 255) { "Printer reply checksum failed" }
-        check(ByteBuffer.wrap(packet, 4, 2).short.toInt() and 65535 == command) { "Unexpected printer reply" }
+        ensureState(packet.sumOf { it.toInt() and 255 } and 255 == 255, R.string.printer_reply_checksum_failed)
+        ensureState(ByteBuffer.wrap(packet, 4, 2).short.toInt() and 65535 == command, R.string.unexpected_printer_reply)
         val result = packet[6].toInt() and 255
-        check(result == 0) { when (result) {
-            1, 194 -> "Printer is busy. Wait before trying again."
-            144 -> "Printer battery is too low."
-            176 -> "Close the film door."
-            177 -> "Printer is out of film."
-            else -> "Printer returned error 0x${result.toString(16)}"
-        } }
+        if (result != 0) throw UserStateFailure(when (result) {
+            1, 194 -> R.string.printer_is_busy_wait_before_trying_again
+            144 -> R.string.printer_battery_is_too_low
+            176 -> R.string.close_the_film_door
+            177 -> R.string.printer_is_out_of_film
+            else -> R.string.printer_error
+        }, result.toString(16))
         return packet.copyOfRange(7, packet.lastIndex)
     }
 }

@@ -29,7 +29,7 @@ The Android photo picker is different from Google's web Photos Picker API. The l
 1. Add your photos to the queue, then tap **Create collage / designed print**. For a single photo, tap its **Design · frame, caption & QR** action.
 2. Choose 1–6 photos from the queue or import more using the system picker. Selection order determines placement; use Earlier/Later to reorder.
 3. Choose a layout and select each photo's numbered chip to rotate, fit, zoom, or adjust its crop position.
-4. Choose a frame/color look, adjust border and spacing, and optionally add a caption or QR link/message.
+4. The preview stays pinned while controls scroll. Layout, ordering, rotation and crop are the primary controls. Frames, spacing, captions, color looks and QR codes are in a collapsed **More options** section at the bottom.
 5. **Save print to queue** creates a separate, flattened, lossless 1260×840 PNG. Original photos stay unchanged. Print the saved design as one sheet.
 
 The live draft survives activity rotation but is not restored after process death. Saved prints persist across restarts and stay usable after their source photos are removed. Saved designs are flattened rather than editable layout recipes; keep source photos to make another version. Captions support up to 80 characters. QR payloads support up to 160 UTF-8 bytes. QR codes embed the supplied text/link directly: WideLight does not host audio or other files. Try scanning a physical test print before making more copies.
@@ -74,9 +74,15 @@ This version covers cloud-aware photo selection, a durable print queue, collage/
 
 Implementation here is original; protocol research projects are credited for documenting wire formats and transport behavior.
 
+## Language and app size
+
+The interface supports English and Russian and follows your device/app language. On Android 13+, choose a language in Android Settings → Apps → WideLight → Language. Built-in queue titles, controls, help, validation errors, and app/printer messages are translated; imported metadata remains unchanged.
+
+Release builds use R8 code optimization and resource shrinking. The unused extended icon library is removed and packaged library translations are limited to the two supported languages. Debug builds remain unoptimized for development.
+
 ## Automatic GitHub releases
 
-Every branch push runs the checks, then builds a signed, non-debuggable release APK and publishes a GitHub release tagged `build-<workflow run number>`, with the APK and SHA-256 checksum attached. Default-branch releases become the latest release; other branches publish prereleases. Pull requests run checks without publishing. Re-running a workflow replaces the same build's assets rather than creating a duplicate release.
+Every branch push tests, lints, and builds a signed, non-debuggable release APK once and publishes a GitHub release tagged `build-<workflow run number>`, with the APK and SHA-256 checksum attached. Default-branch releases become the latest release; other branches publish prereleases. Pull requests run checks without publishing. Re-running a workflow replaces the same build's assets rather than creating a duplicate release.
 
 Download the newest default-branch build directly: [WideLight.apk](https://github.com/vavilovm/widelight/releases/latest/download/WideLight.apk), or browse [GitHub Releases](https://github.com/vavilovm/widelight/releases/latest). Android version codes increase with the workflow run number. The default signing identity is the intentionally public, dedicated development key in `.github/keys/development.p12`, so no secret setup is needed. These are development distributions, not Play Store releases. The earlier debug APK uses a different certificate; switching from it requires uninstalling it first, which removes its private photo library.
 
@@ -86,5 +92,7 @@ To use your own persistent signing identity, add these repository **Actions secr
 - `ANDROID_KEYSTORE_PASSWORD`: keystore password.
 - `ANDROID_KEY_ALIAS`: signing-key alias.
 - `ANDROID_KEY_PASSWORD`: signing-key password.
+
+CI pins Ubuntu 24.04 and Node 24 actions, reuses the Gradle build cache, and transfers the already-built APK to the publishing job without rebuilding it. Artifact uploads skip redundant ZIP compression.
 
 The workflow decodes the key into temporary runner storage, validates the accompanying settings, and removes the file after building. Keep the same key for future updates. Local `./gradlew assembleRelease` uses the development key unless `ANDROID_KEYSTORE_PATH` and the three signing environment variables are supplied.

@@ -16,7 +16,7 @@ object Photos {
         val file = File(context.filesDir, "$id.photo")
         try {
             context.contentResolver.openInputStream(uri).use { input ->
-                requireNotNull(input) { "Cannot open photo" }
+                requireNotNull(input) { throw UserStateFailure(R.string.cannot_open_photo) }
                 file.outputStream().use { output ->
                     val buffer = ByteArray(16384)
                     var total = 0
@@ -24,7 +24,7 @@ object Photos {
                         val n = input.read(buffer)
                         if (n < 0) break
                         total += n
-                        check(total <= MAX_IMPORT) { "Photo exceeds 30 MB" }
+                        ensureState(total <= MAX_IMPORT, R.string.photo_exceeds_30_mb)
                         output.write(buffer, 0, n)
                     }
                 }
@@ -35,7 +35,7 @@ object Photos {
         } catch (e: Exception) { file.delete(); throw e }
     }
     fun decode(photo: Photo): Bitmap {
-        require(photo.file.length() in 1..MAX_IMPORT.toLong()) { "Photo is empty or exceeds 30 MB" }
+        ensureInput(photo.file.length() in 1..MAX_IMPORT.toLong(), R.string.photo_is_empty_or_exceeds_30_mb)
         val source = ImageDecoder.createSource(java.nio.ByteBuffer.wrap(photo.file.readBytes()))
         val bitmap = ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
             decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
@@ -66,7 +66,7 @@ object Photos {
                 val bytes = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.JPEG, quality, it) }.toByteArray()
                 if (bytes.size <= caps.maxBytes) return bytes
             }
-            error("Photo cannot fit the printer's transfer limit")
+            throw UserStateFailure(R.string.photo_cannot_fit_the_printer_s_transfer)
         } finally { bitmap.recycle() }
     }
 }

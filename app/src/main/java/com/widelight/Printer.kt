@@ -28,7 +28,7 @@ class Printer(device: BluetoothDevice) : Closeable {
     fun capabilities(): Capabilities {
         command(0)
         val data = command(2, byteArrayOf(0))
-        check(data.size >= 11 && data[0] == 0.toByte()) { "Invalid image capabilities" }
+        ensureState(data.size >= 11 && data[0] == 0.toByte(), R.string.invalid_image_capabilities)
         val b = ByteBuffer.wrap(data)
         b.get()
         val w = b.short.toInt() and 65535
@@ -36,32 +36,32 @@ class Printer(device: BluetoothDevice) : Closeable {
         val formats = b.get().toInt()
         b.get()
         val max = b.int
-        check(w == 1260 && h in 800..840 && formats and 2 != 0 && max in 10000..10000000) { "This printer is not a supported original Link WIDE" }
+        ensureState(w == 1260 && h in 800..840 && formats and 2 != 0 && max in 10000..10000000, R.string.this_printer_is_not_a_supported_original)
         return Capabilities(w, h, max)
     }
-    fun status(): String {
+    fun status(): Int {
         val d = command(2, byteArrayOf(2))
-        check(d.size >= 9 && d[0] == 2.toByte()) { "Invalid printer status" }
+        ensureState(d.size >= 9 && d[0] == 2.toByte(), R.string.invalid_printer_status)
         val film = d[1].toInt() and 15
         val flags = d[2].toInt() and 255
-        check(flags and 1 == 0) { "Close the film door" }
-        check(flags and 6 == 0) { "Printer is busy or has an error" }
-        check(film > 0) { "Load film before printing" }
-        return "$film sheets remaining"
+        ensureState(flags and 1 == 0, R.string.close_the_film_door_text)
+        ensureState(flags and 6 == 0, R.string.printer_is_busy_or_has_an_error)
+        ensureState(film > 0, R.string.load_film_before_printing)
+        return film
     }
     fun print(jpeg: ByteArray, progress: (Float) -> Unit) {
         status()
         val start = command(0x1000, ByteBuffer.allocate(8).put(2).put(0).putShort(0).putInt(jpeg.size).array())
-        check(start.size == 4) { "Invalid transfer response" }
+        ensureState(start.size == 4, R.string.invalid_transfer_response)
         val frameSize = ByteBuffer.wrap(start).int
-        check(frameSize in 1..65524) { "Invalid transfer frame size" }
+        ensureState(frameSize in 1..65524, R.string.invalid_transfer_frame_size)
         val count = (jpeg.size + frameSize - 1) / frameSize
         repeat(count) { index ->
             val frame = ByteArray(frameSize)
             val from = index * frameSize
             jpeg.copyInto(frame, 0, from, minOf(from + frameSize, jpeg.size))
             val ack = command(0x1001, ByteBuffer.allocate(frameSize + 4).putInt(index).put(frame).array())
-            check(ack.size == 4 && ByteBuffer.wrap(ack).int == index) { "Unexpected frame acknowledgement" }
+            ensureState(ack.size == 4 && ByteBuffer.wrap(ack).int == index, R.string.unexpected_frame_acknowledgement)
             progress((index + 1f) / count)
         }
         command(0x1002)

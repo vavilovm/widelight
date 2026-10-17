@@ -7,12 +7,12 @@ import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 
 /** Normalized rectangles keep the preview and full-resolution print in agreement. */
 data class Cell(val left: Float, val top: Float, val right: Float, val bottom: Float)
-enum class Layout(val label: String) { AUTO("Grid"), COLUMNS("Columns"), ROWS("Rows"), HERO("Spotlight") }
-enum class Frame(val label: String, val color: Int) {
-    NONE("None", -1), WHITE("White", -1), INK("Ink", 0xFF202827.toInt()),
-    CREAM("Cream", 0xFFF4E9D3.toInt()), TEAL("Teal", 0xFF236C61.toInt())
+enum class Layout(val label: Int) { AUTO(R.string.grid), COLUMNS(R.string.columns), ROWS(R.string.rows), HERO(R.string.spotlight) }
+enum class Frame(val label: Int, val color: Int) {
+    NONE(R.string.none, -1), WHITE(R.string.white, -1), INK(R.string.ink, 0xFF202827.toInt()),
+    CREAM(R.string.cream, 0xFFF4E9D3.toInt()), TEAL(R.string.teal, 0xFF236C61.toInt())
 }
-enum class Look(val label: String) { NATURAL("Natural"), POP("Pop"), MONO("B&W"), WARM("Warm") }
+enum class Look(val label: Int) { NATURAL(R.string.natural), POP(R.string.pop), MONO(R.string.b_w), WARM(R.string.warm) }
 data class Slot(val photo: Photo, val turns: Int = photo.turns, val fill: Boolean = true,
                 val zoom: Float = 1f, val x: Float = .5f, val y: Float = .5f)
 data class Composition(
@@ -21,11 +21,11 @@ data class Composition(
     val qr: String = "", val look: Look = Look.NATURAL,
 ) {
     fun validate() {
-        require(slots.size in 1..6) { "Choose 1 to 6 photos" }
-        require(border in 0f..0.08f && gap in 0f..0.04f) { "Invalid spacing" }
-        require(caption.length <= 80) { "Keep the caption under 80 characters" }
-        require(qr.toByteArray(Charsets.UTF_8).size <= 160) { "Use a shorter QR link or message (160 bytes maximum)" }
-        slots.forEach { require(it.zoom in 1f..3f && it.x in 0f..1f && it.y in 0f..1f) }
+        ensureInput(slots.size in 1..6, R.string.choose_1_to_6_photos)
+        ensureInput(border in 0f..0.08f && gap in 0f..0.04f, R.string.invalid_spacing)
+        ensureInput(caption.length <= 80, R.string.keep_the_caption_under_80_characters)
+        ensureInput(qr.toByteArray(Charsets.UTF_8).size <= 160, R.string.use_a_shorter_qr_link_or_message)
+        slots.forEach { ensureInput(it.zoom in 1f..3f && it.x in 0f..1f && it.y in 0f..1f, R.string.invalid_crop) }
     }
 }
 object CollageLayout {
